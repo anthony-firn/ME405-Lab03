@@ -70,6 +70,27 @@ def task2_fun ():
         char += 1
         if char > ord ('z'):
             char = ord ('a')
+            
+            
+import controller
+import encoder
+import motor
+import pyb
+import utime
+
+    
+def task1_calcuation ():
+    ''' Function which runs for Task 1, which toggles twice every second in a
+    way which is only slightly silly.  '''
+    control = controller.Controller(1, 5000)
+    motor1 = motor.MotorDriver()
+    encoder1 = encoder.Encoder(pyb.Pin.board.PB6, pyb.Pin.board.PB7, pyb.Timer(4))
+
+    pwm = control.calculate(encoder1.get_position())
+    motor1.set_duty_cycle(pwm)
+            
+    yield ()
+
 
 
 # =============================================================================
