@@ -11,7 +11,12 @@ import gc
 import cotask
 import task_share
 import print_task
-import busy_task
+
+import controller
+import encoder
+import motor
+import pyb
+import utime
 
 # Allocate memory so that exceptions raised in interrupt service routines can
 # generate useful diagnostic printouts
@@ -20,76 +25,42 @@ micropython.alloc_emergency_exception_buf (100)
 
 GOING = const (0)
 STOPPED = const (1)
-
-def task1_fun ():
-    ''' Function which runs for Task 1, which toggles twice every second in a
-    way which is only slightly silly.  '''
-
-    state = STOPPED
-    counter = 0
-
-    while True:
-        if state == GOING:
-            print_task.put ('GOING\n')
-            state = STOPPED
-
-        elif state == STOPPED:
-            print_task.put ('STOPPED\n')
-            state = GOING
-
-        else:
-            raise ValueError ('Illegal state for task 1')
-
-        # Periodically check and/or clean up memory
-        counter += 1
-        if counter >= 60:
-            counter = 0
-            print_task.put (' Memory: {:d}\n'.format (gc.mem_free ()))
-
-        yield (state)
-
-
-def task2_fun ():
-    ''' Function that implements task 2, a task which is somewhat sillier
-    than task 1. '''
-
-    t2buf = bytearray ('<.>')
-
-    char = ord ('a')
-
-    # Test the speed of two different ways to get text out the serial port
-    while True:
-        # Put a string into the print queue - this is slower, around 2 ms
-#        shares.print_task.put ('<' + chr (char) + '>')
-
-        # Use a bytearray with no memory allocation, faster, around 1 ms
-        t2buf[1] = char
-        print_task.put_bytes (t2buf)
-
-        yield (0)
-        char += 1
-        if char > ord ('z'):
-            char = ord ('a')
-            
-            
-import controller
-import encoder
-import motor
-import pyb
-import utime
-
+PRINT = const (2)
     
-def task1_calcuation ():
+def task_calculation ():
     ''' Function which runs for Task 1, which toggles twice every second in a
     way which is only slightly silly.  '''
-    control = controller.Controller(1, 5000)
+    control = controller.Controller(0.1, 0)
     motor1 = motor.MotorDriver()
     encoder1 = encoder.Encoder(pyb.Pin.board.PB6, pyb.Pin.board.PB7, pyb.Timer(4))
 
-    pwm = control.calculate(encoder1.get_position())
-    motor1.set_duty_cycle(pwm)
+    state = STOPPED
+    start_count = utime.ticks_ms()
+    running_count = utime.ticks_ms()
+    
+    while True:
+        pwm = control.calculate(encoder1.get_position())
+        motor1.set_duty_cycle(pwm)
+        running_count = utime.ticks_ms()
+        if state == STOPPED :
+            control.clear_list()
+            if (running_count > (start_count + 10000)) :
+                control.set_setpoint(5000)
+                start_count = utime.ticks_ms()
+                state = GOING
+        elif state == GOING :
+            if (running_count > (start_count + 300)) :
+                control.set_setpoint(0)
+                encoder1.zero()
+                start_count = utime.ticks_ms()
+                state = PRINT
+        elif state == PRINT :
+            control.print_results()
+            control.clear_list()
+            print("print end")
+            state = STOPPED
             
-    yield ()
+        yield (state)
 
 
 
@@ -110,23 +81,15 @@ if __name__ == "__main__":
     # allocated for state transition tracing, and the application will run out
     # of memory after a while and quit. Therefore, use tracing only for 
     # debugging and set trace to False when it's not needed
-    task1 = cotask.Task (task1_fun, name = 'Task_1', priority = 1, 
-                         period = 1000, profile = True, trace = False)
-    task2 = cotask.Task (task2_fun, name = 'Task_2', priority = 2, 
-                         period = 100, profile = True, trace = False)
-    cotask.task_list.append (task1)
-    cotask.task_list.append (task2)
-
+    motor1_task = cotask.Task (task_calculation, name = 'motor1_task', priority = 1,
+                            period = 25, profile = True, trace = False)
+    motor2_task = cotask.Task (task_calculation, name = 'motor2_task', priority = 2,
+                            period = 25, profile = True, trace = False)
+    cotask.task_list.append (motor1_task)
+    cotask.task_list.append (motor2_task)
+    
     # A task which prints characters from a queue has automatically been
     # created in print_task.py; it is accessed by print_task.put_bytes()
-
-    # Create a bunch of silly time-wasting busy tasks to test how well the
-    # scheduler works when it has a lot to do
-    for tnum in range (10):
-        newb = busy_task.BusyTask ()
-        bname = 'Busy_' + str (newb.ser_num)
-        cotask.task_list.append (cotask.Task (newb.run_fun, name = bname, 
-            priority = 0, period = 400 + 30 * tnum, profile = True))
 
     # Run the memory garbage collector to ensure memory is as defragmented as
     # possible before the real-time scheduler is started
@@ -144,6 +107,6 @@ if __name__ == "__main__":
     # Print a table of task data and a table of shared information data
     print ('\n' + str (cotask.task_list) + '\n')
     print (task_share.show_all ())
-    print (task1.get_trace ())
+    print (control_task.get_trace ())
     print ('\r\n')
 
