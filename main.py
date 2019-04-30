@@ -27,12 +27,12 @@ GOING = const (0)
 STOPPED = const (1)
 PRINT = const (2)
     
-def task_calculation ():
+def task_motor1 ():
     ''' Function which runs for Task 1, which toggles twice every second in a
     way which is only slightly silly.  '''
     control = controller.Controller(0.1, 0)
-    motor1 = motor.MotorDriver()
-    encoder1 = encoder.Encoder(pyb.Pin.board.PB6, pyb.Pin.board.PB7, pyb.Timer(4))
+    motor1 = motor.MotorDriver(pyb.Pin.board.PB4,pyb.Pin.board.PB5, pyb.Pin.board.PA10, pyb.Timer(3))
+    encoder1 = encoder.Encoder(pyb.Pin.board.PB7, pyb.Pin.board.PB6, pyb.Timer(4))
 
     state = STOPPED
     start_count = utime.ticks_ms()
@@ -57,12 +57,45 @@ def task_calculation ():
         elif state == PRINT :
             control.print_results()
             control.clear_list()
-            print("print end")
+            print("print end1")
             state = STOPPED
             
         yield (state)
 
-
+def task_motor2 ():
+    ''' Function which runs for Task 1, which toggles twice every second in a
+    way which is only slightly silly.  '''
+    control = controller.Controller(0.1, 0)
+    motor2 = motor.MotorDriver(pyb.Pin.board.PA1,pyb.Pin.board.PA0, pyb.Pin.board.PC1, pyb.Timer(2))
+    encoder2 = encoder.Encoder(pyb.Pin.board.PC7, pyb.Pin.board.PC6, pyb.Timer(8))
+    
+    state = STOPPED
+    start_count = utime.ticks_ms()
+    running_count = utime.ticks_ms()
+    
+    while True:
+        pwm = control.calculate(encoder2.get_position())
+        motor2.set_duty_cycle(pwm)
+        running_count = utime.ticks_ms()
+        if state == STOPPED :
+            control.clear_list()
+            if (running_count > (start_count + 10000)) :
+                control.set_setpoint(5000)
+                start_count = utime.ticks_ms()
+                state = GOING
+        elif state == GOING :
+            if (running_count > (start_count + 300)) :
+                control.set_setpoint(0)
+                encoder2.zero()
+                start_count = utime.ticks_ms()
+                state = PRINT
+        elif state == PRINT :
+            control.print_results()
+            control.clear_list()
+            print("print end2")
+            state = STOPPED
+            
+        yield (state)
 
 # =============================================================================
 
@@ -81,9 +114,9 @@ if __name__ == "__main__":
     # allocated for state transition tracing, and the application will run out
     # of memory after a while and quit. Therefore, use tracing only for 
     # debugging and set trace to False when it's not needed
-    motor1_task = cotask.Task (task_calculation, name = 'motor1_task', priority = 1,
+    motor1_task = cotask.Task (task_motor1, name = 'motor1_task', priority = 1,
                             period = 25, profile = True, trace = False)
-    motor2_task = cotask.Task (task_calculation, name = 'motor2_task', priority = 2,
+    motor2_task = cotask.Task (task_motor2, name = 'motor2_task', priority = 2,
                             period = 25, profile = True, trace = False)
     cotask.task_list.append (motor1_task)
     cotask.task_list.append (motor2_task)
